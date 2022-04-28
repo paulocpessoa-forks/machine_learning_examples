@@ -1,0 +1,11 @@
+import numpy as np
+
+args = [9.,8.,7.]
+print(np.random.choice(args))
+print(np.amax(args))
+print(np.argmax(args))
+print(np.max(args))
+print(np.argwhere(np.amax(args) == args))
+print(np.argwhere(np.amax(args) == args).flatten())
+print(np.argwhere(np.amax(args) == args).tolist())
+
