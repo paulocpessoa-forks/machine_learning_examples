@@ -1,78 +1,94 @@
-from __future__ import print_function, division
-from ast import Num
-from builtins import range
-from typing import List
-
-import matplotlib.pyplot as plt
+from tokenize import Double
 import numpy as np
 
-NUM_TRIALS = 10000
-EPS = 0.1
-BANDIT_PROBABILITIES = [0.2, 0.5, 0.75]
+from functools import wraps
+from time import time
+
+def timing(f):
+    @wraps(f)
+    def wrap(*args, **kw):
+        ts = time()
+        result = f(*args, **kw)
+        te = time()
+        print ('func:%r args:[%r, %r] took: %2.4f sec' % \
+          (f.__name__, args, kw, te-ts))
+        return result
+    return wrap
+
+class Bandit(object):
+    def __init__(self, p_real):
+        self.p_real = p_real
+        self.p_estimate = 0
+        self.N = 0
+
+    def pull(self) -> int:
+        return 0 if np.random.rand() >= self.p_real else 1
+
+    def update(self, x: int):
+        self.N += 1
+        self.p_estimate = (x + self.p_estimate * (self.N - 1)) / self.N
 
 
-class BanditArm:
-    def __init__(self, p):
-        self.p = p
-        self.p_estimate = 0.0
-        self.N = 0.0
+class ExperimentEpsilonGreedy(object):
+    def __init__(self, pulls_number: int, p_real_list: list[float], epsilon=0.1):
+        self.pulls_number = pulls_number
+        self.bandits = [Bandit(p) for p in p_real_list]
+        self.epsilon = epsilon
 
-    def pull(self):
-        return np.random.random() < self.p
+    def get_max_idx(self, v):
+        arr = np.array(v)
+        idx = np.where(arr == arr.max())[0]
+        return np.random.choice(idx)
 
-    def update(self, x):
-        self.N += 1.0
-        self.p_estimate = ((self.N - 1) * self.p_estimate + x) / self.N
+    @timing
+    def run(self):
+        best_bandit_count = 0
+        best_bandit_index = np.max([b.p_estimate for b in self.bandits])
+        bandits_number = len(self.bandits)
+        outcomes = np.zeros(self.pulls_number)
 
-def choose_arg_max(a):
-    idx = np.argwhere(np.max(a) == a).flatten()
-    return np.random.choice(idx)
+        for i in range(self.pulls_number):
+            current_bandit_index = 0
+            if np.random.rand() > self.epsilon:
+                current_bandit_index = self.get_max_idx(
+                    [b.p_estimate for b in self.bandits]
+                )
 
-def experiment():
-    bandits = [BanditArm(p) for p in BANDIT_PROBABILITIES]
+            else:
+                current_bandit_index = np.random.randint(bandits_number)
 
-    rewards = np.zeros(NUM_TRIALS)
-    num_times_explored = 0
-    num_times_exploited = 0
-    num_optimal = 0
-    optimal_bandit_index = np.argmax([b.p] for b in bandits)
-    print("optimal_bandit_index:", optimal_bandit_index)
+            outcome = self.bandits[current_bandit_index].pull()
+            outcomes[i] = outcome
+            self.bandits[current_bandit_index].update(outcome)
+            if current_bandit_index == best_bandit_index:
+                best_bandit_count += 1
 
-    for i in range(NUM_TRIALS):
-        #use epsilon greedy to select the next bandit
-        if np.random.random() < EPS:
-            num_times_explored += 1
-            bandit_chosen = np.random.randint(len(bandits))
-        else:
-            num_times_exploited += 1
-            bandit_chosen = choose_arg_max([b.p_estimate for b in bandits])
+        print(f"-----------------------------------------------------------------------")
+        print(f"The best bandit real value was {self.bandits[best_bandit_index].p_real}")
+        final_results = outcomes.sum() / outcomes.size        
+        print(f"The outcome ratio was {final_results}")
         
-        if bandit_chosen == optimal_bandit_index:
-            num_optimal += 1
+        best_possible_outcome = (
+            self.bandits[best_bandit_index].p_real * (1 - self.epsilon)
+            + np.mean([b.p_real for b in self.bandits]) * self.epsilon
+        )        
+        print(
+            f"Using the {self.epsilon} epsilon, the best outcome would be {best_possible_outcome}"
+        )
+        print(f"-----------------------------------------------------------------------")
+        
 
-        reward = bandits[bandit_chosen].pull()
 
-        rewards[i] = reward
+# b = Bandit(0.3)
+# b.update(b.pull())
+# b.update(b.pull())
+# b.update(b.pull())
+# b.update(b.pull())
+# print(b.p_estimate)
+e = ExperimentEpsilonGreedy(10000, [0.2, 0.5, 0.75])
+e.run()
 
-        bandits[bandit_chosen].update(reward)
 
-    # print mean estimates for each bandit
-    for b in bandits:
-        print("mean estimate:", b.p_estimate)
-
-    # print total reward
-    print("total reward earned:", rewards.sum())
-    print("overall win rate:", rewards.sum() / NUM_TRIALS)
-    print("num_times_explored:", num_times_explored)
-    print("num_times_exploited:", num_times_exploited)
-    print("num times selected optimal bandit:", num_optimal)
-
-    # plot the results
-    cumulative_rewards = np.cumsum(rewards)
-    win_rates = cumulative_rewards / (np.arange(NUM_TRIALS) + 1)
-    plt.plot(win_rates)
-    plt.plot(np.ones(NUM_TRIALS)*np.max(BANDIT_PROBABILITIES))
-    plt.show()
-
-if __name__ == "__main__":
-    experiment()
+# b = Bandit(0.4)
+# [b.update(b.pull()) for _ in range(10000)]
+# print(b.p_estimate)
