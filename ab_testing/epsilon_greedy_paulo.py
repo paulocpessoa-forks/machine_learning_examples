@@ -1,8 +1,10 @@
 from tokenize import Double
 import numpy as np
+import matplotlib.pyplot as plt
 
 from functools import wraps
 from time import time
+
 
 def timing(f):
     @wraps(f)
@@ -10,10 +12,11 @@ def timing(f):
         ts = time()
         result = f(*args, **kw)
         te = time()
-        print ('func:%r args:[%r, %r] took: %2.4f sec' % \
-          (f.__name__, args, kw, te-ts))
+        print("func:%r args:[%r, %r] took: %2.4f sec" % (f.__name__, args, kw, te - ts))
         return result
+
     return wrap
+
 
 class Bandit(object):
     def __init__(self, p_real):
@@ -30,8 +33,8 @@ class Bandit(object):
 
 
 class ExperimentEpsilonGreedy(object):
-    def __init__(self, pulls_number: int, p_real_list: list[float], epsilon=0.1):
-        self.pulls_number = pulls_number
+    def __init__(self, number_of_tries: int, p_real_list: list[float], epsilon=0.1):
+        self.number_of_tries = number_of_tries
         self.bandits = [Bandit(p) for p in p_real_list]
         self.epsilon = epsilon
 
@@ -40,20 +43,22 @@ class ExperimentEpsilonGreedy(object):
         idx = np.where(arr == arr.max())[0]
         return np.random.choice(idx)
 
+    def best_possible_outcome(self) -> float:
+        best_bandit_index = np.argmax([b.p_real for b in self.bandits])
+        return self.bandits[best_bandit_index].p_real * (1 - self.epsilon) + np.mean([b.p_real for b in self.bandits]) * self.epsilon
+
     @timing
     def run(self):
         best_bandit_count = 0
-        best_bandit_index = np.max([b.p_estimate for b in self.bandits])
+        best_bandit_index = np.argmax([b.p_real for b in self.bandits])
         bandits_number = len(self.bandits)
-        outcomes = np.zeros(self.pulls_number)
+        outcomes = np.zeros(self.number_of_tries)
+        best_bandit_selected = np.zeros(self.number_of_tries)
 
-        for i in range(self.pulls_number):
+        for i in range(self.number_of_tries):
             current_bandit_index = 0
             if np.random.rand() > self.epsilon:
-                current_bandit_index = self.get_max_idx(
-                    [b.p_estimate for b in self.bandits]
-                )
-
+                current_bandit_index = self.get_max_idx([b.p_estimate for b in self.bandits])
             else:
                 current_bandit_index = np.random.randint(bandits_number)
 
@@ -62,33 +67,25 @@ class ExperimentEpsilonGreedy(object):
             self.bandits[current_bandit_index].update(outcome)
             if current_bandit_index == best_bandit_index:
                 best_bandit_count += 1
+                best_bandit_selected[i] = 1
 
         print(f"-----------------------------------------------------------------------")
-        print(f"The best bandit real value was {self.bandits[best_bandit_index].p_real}")
-        final_results = outcomes.sum() / outcomes.size        
+        print(f"epsilon: {self.epsilon}")
+        best_possible_score = self.bandits[best_bandit_index].p_real
+        print(f"The best bandit real value was {best_possible_score}")
+        final_results = outcomes.sum() / outcomes.size
         print(f"The outcome ratio was {final_results}")
-        
-        best_possible_outcome = (
-            self.bandits[best_bandit_index].p_real * (1 - self.epsilon)
-            + np.mean([b.p_real for b in self.bandits]) * self.epsilon
-        )        
-        print(
-            f"Using the {self.epsilon} epsilon, the best outcome would be {best_possible_outcome}"
-        )
+
+        print(f"Using the {self.epsilon} epsilon, the best outcome would be {self.best_possible_outcome()}")
         print(f"-----------------------------------------------------------------------")
-        
+        plt.plot(np.cumsum(outcomes) / np.cumsum(np.ones(self.number_of_tries)), label="outcomes")
+        plt.plot(np.cumsum(best_bandit_selected) / np.cumsum(np.ones(self.number_of_tries)), label="best_bandit_selected")
+        plt.plot(np.ones(self.number_of_tries) * self.best_possible_outcome(), label="best_possible_outcome")
+        plt.plot(np.ones(self.number_of_tries) * best_possible_score, label="best_possible_score")
+        plt.title(f"epsilon: {self.epsilon}")
+        plt.legend(loc="lower right")
+        plt.show()
 
 
-# b = Bandit(0.3)
-# b.update(b.pull())
-# b.update(b.pull())
-# b.update(b.pull())
-# b.update(b.pull())
-# print(b.p_estimate)
 e = ExperimentEpsilonGreedy(10000, [0.2, 0.5, 0.75])
 e.run()
-
-
-# b = Bandit(0.4)
-# [b.update(b.pull()) for _ in range(10000)]
-# print(b.p_estimate)
